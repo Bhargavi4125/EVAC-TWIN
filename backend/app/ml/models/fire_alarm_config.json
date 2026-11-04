@@ -1,0 +1,12 @@
+{
+    "features": [
+        "Temperature[C]",
+        "Humidity[%]",
+        "TVOC[ppb]",
+        "eCO2[ppm]",
+        "PM1.0",
+        "PM2.5"
+    ],
+    "temperature": 0.8378200531005859,
+    "threshold": 0.5
+}

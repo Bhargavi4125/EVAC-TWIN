@@ -1,0 +1,79 @@
+Required software on the new laptop
+
+Python 3.10
+Node.js + npm
+MongoDB Community Server
+MongoDB Shell (mongosh)
+Mosquitto MQTT Broker
+
+EVAC-TWIN — COMMANDS
+
+1. PROJECT
+cd C:\EVAC-TWIN
+dir
+
+2. PYTHON
+py --list
+
+3. BACKEND SETUP
+cd C:\EVAC-TWIN\backend
+py -3.10 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python --version
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+
+4. MONGODB CHECK
+Test-NetConnection localhost -Port 27017
+
+5. MOSQUITTO CHECK
+Test-NetConnection localhost -Port 1883
+
+6. START BACKEND
+cd C:\EVAC-TWIN\backend
+.\.venv\Scripts\Activate.ps1
+python -m uvicorn app.main:app --reload --port 8001
+
+7. BACKEND TEST
+Invoke-WebRequest http://127.0.0.1:8001/api/health -UseBasicParsing
+
+8. FRONTEND SETUP
+cd C:\EVAC-TWIN\frontend
+npm install
+
+9. START FRONTEND
+npm run dev
+
+10. START IoT SIMULATOR
+cd C:\EVAC-TWIN\backend
+.\.venv\Scripts\Activate.ps1
+python -m app.iot_simulator
+
+11. OPEN
+http://localhost:5173/monitoring
+
+12. MONGODB DATA
+mongosh
+show dbs
+use evac_twin
+show collections
+db.sensors.find().pretty()
+db.events.find().pretty()
+db.buildings.find().pretty()
+exit
+
+After first-time setup, every time only these 3 run:
+# TERMINAL 1 — BACKEND
+cd C:\EVAC-TWIN\backend
+.\.venv\Scripts\Activate.ps1
+python -m uvicorn app.main:app --reload --port 8001
+
+# TERMINAL 2 — FRONTEND
+cd C:\EVAC-TWIN\frontend
+npm run dev
+
+# TERMINAL 3 — IoT
+cd C:\EVAC-TWIN\backend
+.\.venv\Scripts\Activate.ps1
+python -m app.iot_simulator
+
