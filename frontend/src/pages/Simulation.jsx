@@ -516,66 +516,34 @@ function Simulation() {
     // =========================================================
 
     const getFloorClass = (floor) => {
-        const level = activeRisk.level;
-
-        if (level === "CRITICAL") {
-            return "simulation-floor danger";
-        }
-
-        if (level === "HIGH") {
-            if (scenario === "Overcrowding") {
-                return floor === 1
-                    ? "simulation-floor danger"
-                    : "simulation-floor warning";
-            }
-
-            return floor === 3
-                ? "simulation-floor danger"
-                : "simulation-floor warning";
-        }
-
-        if (level === "MODERATE") {
-            return "simulation-floor warning";
-        }
-
-        return "simulation-floor safe";
-    };
-
+    return "simulation-floor";
+};
     // =========================================================
     // ROOM STATUS
     // =========================================================
 
     const getRoomClass = (floor, room) => {
-        const level = activeRisk.level;
+    const zoneId = `${floor}0${room}`;
 
-        if (level === "CRITICAL") {
-            return "critical-room";
-        }
+    const roomSensor = sensors.find(
+        (sensor) => String(sensor.zone_id) === zoneId
+    );
 
-        if (level === "HIGH") {
-            if (
-                scenario === "Overcrowding" &&
-                floor === 1
-            ) {
-                return "critical-room";
-            }
+    if (!roomSensor) return "normal-room";
 
-            if (room <= 2) {
-                return "warning-room";
-            }
+    const risk =
+        String(selectedZone) === zoneId
+            ? activeRisk
+            : calculateRisk(roomSensor);
 
-            return "normal-room";
-        }
+    if (risk.level === "CRITICAL") return "critical-room";
 
-        if (level === "MODERATE") {
-            return room === 1
-                ? "warning-room"
-                : "normal-room";
-        }
+    if (risk.level === "HIGH" || risk.level === "MODERATE") {
+        return "warning-room";
+    }
 
-        return "normal-room";
-    };
-
+    return "normal-room";
+};
     // =========================================================
     // SCENARIO IMPACT
     // =========================================================

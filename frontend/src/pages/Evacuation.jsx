@@ -9,10 +9,17 @@ import { calculateRisk } from "../utils/riskEngine";
 import "./Evacuation.css";
 
 function Evacuation() {
+    const urlZone = new URLSearchParams(window.location.search).get("zone");
     const [sensors, setSensors] = useState([]);
     const [selectedDevice, setSelectedDevice] = useState(
-    () => `sensor-${localStorage.getItem("selectedZone") || "101"}`
+    () => `sensor-${urlZone || localStorage.getItem("selectedZone") || "101"}`
 );
+useEffect(() => {
+    if (urlZone) {
+        localStorage.setItem("selectedZone", urlZone);
+        setSelectedDevice(`sensor-${urlZone}`);
+    }
+}, [urlZone]);
     const [events, setEvents] = useState([]);
     const [evacuationRoutes, setEvacuationRoutes] = useState(null);
     const [error, setError] = useState("");
@@ -444,16 +451,15 @@ const getEvacuationStatus = () => {
 
 const recommendedExit =
     evacuationRoutes?.selected_zone_recommendation ||
-    evacuationRoutes?.recommended_exit;
+    evacuationRoutes?.recommended_exit ||
+    null;
 
 const routeList =
     evacuationRoutes?.selected_zone_routes ||
     evacuationRoutes?.all_routes ||
     [];
 
-const hasSafeRoute = routeList.some(
-    (route) => route.status === "AVAILABLE"
-);
+
     /* =====================================================
        RENDER
     ===================================================== */
@@ -580,6 +586,7 @@ return (
 
             {latest && (
                 <>
+                
 
                     {/* =================================================
                        COMMAND STATUS

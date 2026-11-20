@@ -1,0 +1,50 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+  <graph edgedefault="undirected">
+    <node id="101" />
+    <node id="CORRIDOR_1" />
+    <node id="102" />
+    <node id="103" />
+    <node id="104" />
+    <node id="STAIR_MAIN_1" />
+    <node id="EXIT_1_NODE" />
+    <node id="201" />
+    <node id="CORRIDOR_2" />
+    <node id="202" />
+    <node id="203" />
+    <node id="204" />
+    <node id="STAIR_MAIN_2" />
+    <node id="EXIT_2_NODE" />
+    <node id="301" />
+    <node id="CORRIDOR_3" />
+    <node id="302" />
+    <node id="303" />
+    <node id="304" />
+    <node id="STAIR_MAIN_3" />
+    <node id="EXIT_3_NODE" />
+    <node id="OUTSIDE_SAFE_AREA" />
+    <edge source="101" target="CORRIDOR_1" />
+    <edge source="CORRIDOR_1" target="102" />
+    <edge source="CORRIDOR_1" target="103" />
+    <edge source="CORRIDOR_1" target="104" />
+    <edge source="CORRIDOR_1" target="STAIR_MAIN_1" />
+    <edge source="CORRIDOR_1" target="EXIT_1_NODE" />
+    <edge source="STAIR_MAIN_1" target="STAIR_MAIN_2" />
+    <edge source="EXIT_1_NODE" target="EXIT_2_NODE" />
+    <edge source="EXIT_1_NODE" target="OUTSIDE_SAFE_AREA" />
+    <edge source="201" target="CORRIDOR_2" />
+    <edge source="CORRIDOR_2" target="202" />
+    <edge source="CORRIDOR_2" target="203" />
+    <edge source="CORRIDOR_2" target="204" />
+    <edge source="CORRIDOR_2" target="STAIR_MAIN_2" />
+    <edge source="CORRIDOR_2" target="EXIT_2_NODE" />
+    <edge source="STAIR_MAIN_2" target="STAIR_MAIN_3" />
+    <edge source="EXIT_2_NODE" target="EXIT_3_NODE" />
+    <edge source="301" target="CORRIDOR_3" />
+    <edge source="CORRIDOR_3" target="302" />
+    <edge source="CORRIDOR_3" target="303" />
+    <edge source="CORRIDOR_3" target="304" />
+    <edge source="CORRIDOR_3" target="STAIR_MAIN_3" />
+    <edge source="CORRIDOR_3" target="EXIT_3_NODE" />
+  </graph>
+</graphml>

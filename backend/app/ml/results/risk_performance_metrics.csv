@@ -1,0 +1,10 @@
+Metric,Value
+Accuracy,0.9884332281808622
+Weighted Precision,0.989176023063764
+Weighted Recall,0.9884332281808622
+Weighted F1 Score,0.9884067185530335
+Macro F1 Score,0.9228561908747804
+Mean One-vs-Rest ROC AUC,0.9992890878465936
+Mean Average Precision,0.977245646444042
+Best Epoch,58.0
+Best Validation Loss,0.10769108063164319

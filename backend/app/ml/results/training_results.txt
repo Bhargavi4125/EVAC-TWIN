@@ -1,0 +1,60 @@
+EVAC-TWIN DEEP LEARNING FIRE DETECTION RESULTS
+=======================================================
+
+Total Records: 62630
+Device: cpu
+Architecture: 6 -> 64 -> 32 -> 1
+Activation: ReLU
+Optimizer: AdamW
+Learning Rate: 0.001
+Best Validation Loss: 0.0271
+Epochs Completed: 100
+Calibration Temperature: 0.8121
+Accuracy: 98.88%
+Precision: 0.9909
+Recall: 0.9935
+Macro F1 Score: 0.9863
+ROC AUC Score: 0.9995
+Average Precision: 0.9998
+
+DATASET SUMMARY
+        Details     Values
+  Total Records      62630
+ Total Features          6
+  Target Column Fire Alarm
+No Fire Records      17873
+   Fire Records      44757
+
+DATASET SPLIT
+    Dataset  Records
+   Training    43841
+ Validation     6263
+Calibration     6263
+    Testing     6263
+
+PERFORMANCE METRICS
+                 Metric    Value
+           Accuracy (%)  98.8800
+              Precision   0.9909
+                 Recall   0.9935
+         Macro F1 Score   0.9863
+          ROC AUC Score   0.9995
+      Average Precision   0.9998
+   Best Validation Loss   0.0271
+       Epochs Completed 100.0000
+Calibration Temperature   0.8121
+
+CLASSIFICATION REPORT
+              precision    recall  f1-score   support
+
+     No Fire       0.98      0.98      0.98      1787
+        Fire       0.99      0.99      0.99      4476
+
+    accuracy                           0.99      6263
+   macro avg       0.99      0.99      0.99      6263
+weighted avg       0.99      0.99      0.99      6263
+
+
+CONFUSION MATRIX
+[[1746   41]
+ [  29 4447]]

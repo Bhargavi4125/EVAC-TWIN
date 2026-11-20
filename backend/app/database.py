@@ -41,6 +41,7 @@ db = client[DATABASE_NAME]
 sensors_collection = db["sensors"]
 events_collection = db["events"]
 buildings_collection = db["buildings"]
+emergency_contacts_collection = db["emergency_contacts"]
 
 
 # ============================================================
@@ -68,6 +69,27 @@ def initialize_indexes():
             ("timestamp", DESCENDING)
         ],
         name="zone_sensor_history"
+    )
+        # --------------------------------------------------------
+    # EMERGENCY CONTACTS
+    # --------------------------------------------------------
+
+    emergency_contacts_collection.create_index(
+        [
+            ("building_id", ASCENDING),
+            ("phone", ASCENDING)
+        ],
+        unique=True,
+        name="emergency_contact_unique"
+    )
+
+    emergency_contacts_collection.create_index(
+        [
+            ("building_id", ASCENDING),
+            ("floor", ASCENDING),
+            ("zone_id", ASCENDING)
+        ],
+        name="contact_location"
     )
 
     # --------------------------------------------------------

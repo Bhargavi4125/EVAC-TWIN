@@ -1,24 +1,29 @@
-# Environment variables
-.env
-.env.*
-!.env.example
-
 # Python
 __pycache__/
-*.py[cod]
+*.pyc
 .venv/
 venv/
+env/
 
-# Node
+# Secrets
+.env
+
+# Frontend
 node_modules/
 dist/
 
-# Backup
+# IDE
+.vscode/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Temporary files
+*.log
+backend.zip
+
+# Project backups
 backup_*/
 
-# Logs
-*.log
-
-# OS files
-.DS_Store
-Thumbs.db
+# Project backups
+backup_*/

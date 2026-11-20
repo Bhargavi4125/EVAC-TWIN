@@ -1,0 +1,4 @@
+Dataset,Records,Percentage
+Training,31066,70.0
+Validation,6657,15.0
+Testing,6657,15.0

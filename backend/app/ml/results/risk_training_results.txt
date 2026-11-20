@@ -1,0 +1,69 @@
+RISK DEEP LEARNING MODEL TRAINING RESULTS
+==================================================
+
+Total Records: 44380
+Training Records: 31066
+Validation Records: 6657
+Testing Records: 6657
+
+Features: ['temperature', 'humidity', 'smoke', 'occupancy']
+Classes: ['CRITICAL', 'HIGH', 'LOW', 'MODERATE']
+
+Architecture: 4 -> 64 -> 32 -> Classes
+Activation: ReLU
+Optimizer: AdamW
+Loss Function: Weighted Cross Entropy
+
+Best Epoch: 58
+Best Validation Loss: 0.1077
+
+Accuracy: 0.9884
+Weighted Precision: 0.9892
+Weighted Recall: 0.9884
+Weighted F1 Score: 0.9884
+Macro F1 Score: 0.9229
+Mean One-vs-Rest ROC AUC: 0.9993
+Mean Average Precision: 0.9772
+
+DATASET SUMMARY
+               Details     Values
+         Total Records      44380
+        Total Features          4
+         Target Column risk_level
+Number of Risk Classes          4
+
+DATASET SPLIT
+   Dataset  Records  Percentage
+  Training    31066        70.0
+Validation     6657        15.0
+   Testing     6657        15.0
+
+PERFORMANCE METRICS
+                  Metric     Value
+                Accuracy  0.988433
+      Weighted Precision  0.989176
+         Weighted Recall  0.988433
+       Weighted F1 Score  0.988407
+          Macro F1 Score  0.922856
+Mean One-vs-Rest ROC AUC  0.999289
+  Mean Average Precision  0.977246
+              Best Epoch 58.000000
+    Best Validation Loss  0.107691
+
+CLASSIFICATION REPORT
+              precision    recall  f1-score   support
+
+    CRITICAL       0.94      0.77      0.85       168
+        HIGH       0.81      0.95      0.87       181
+         LOW       1.00      1.00      1.00      5721
+    MODERATE       0.96      0.99      0.97       587
+
+    accuracy                           0.99      6657
+   macro avg       0.93      0.93      0.92      6657
+weighted avg       0.99      0.99      0.99      6657
+
+CONFUSION MATRIX
+[[ 129   39    0    0]
+ [   8  172    0    1]
+ [   0    0 5699   22]
+ [   0    2    5  580]]

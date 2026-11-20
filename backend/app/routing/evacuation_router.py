@@ -2,7 +2,14 @@ from fastapi import APIRouter, HTTPException, Body
 from app.database import events_collection
 from app.building_layout import BUILDING_ID, ROOMS, CORRIDORS, STAIRS, EXITS, EDGES, EXIT_NODES
 from app.services.sensor_service import latest_zone_intelligence
-from app.services.routing_service import calculate_all_routes, calculate_zone_routes, build_risk_map, BUILDING_GRAPH,compare_algorithms
+from app.services.routing_service import (
+    calculate_all_routes,
+    calculate_zone_routes,
+    build_risk_map,
+    BUILDING_GRAPH,
+    compare_algorithms,
+    select_recommended_route
+)
 from app.ml.predict import predict_risk
 from app.services.sms_service import send_sms
 from app.services.alert_state import (
@@ -10,6 +17,9 @@ from app.services.alert_state import (
     release_sms_alert,
     clear_sms_alert,
 )
+import os
+
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 router = APIRouter(prefix="/api/evacuation", tags=["Evacuation"])
 
 
@@ -371,6 +381,7 @@ def run_simulation_sms(
             else "No safe exit available"
         )
 
+
         message = (
             f"EVAC-TWIN SIMULATION ALERT! "
             f"Zone: {zone_id}. "
@@ -381,7 +392,6 @@ def run_simulation_sms(
         )
 
         success = send_sms(message)
-
         if not success:
             release_sms_alert(zone_id)
 

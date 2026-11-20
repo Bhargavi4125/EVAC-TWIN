@@ -1,3 +1,4 @@
+
 from heapq import heappop, heappush
 from math import inf
 from time import perf_counter
@@ -15,7 +16,7 @@ from app.building_layout import (
 
 
 # =========================================================
-# EVAC-TWIN — ROUTING CONFIGURATION
+# EVAC-TWIN - ROUTING CONFIGURATION
 # =========================================================
 
 NORMAL_EDGE_COST = 1.0
@@ -23,11 +24,6 @@ CORRIDOR_EDGE_COST = 1.0
 STAIR_EDGE_COST = 2.0
 EXIT_EDGE_COST = 1.0
 
-
-# Risk penalties applied when ENTERING a room.
-#
-# CRITICAL is handled separately because another critical
-# room must never be entered during evacuation.
 RISK_PENALTY = {
     "LOW": 0.0,
     "MODERATE": 3.0,
@@ -36,18 +32,20 @@ RISK_PENALTY = {
     "UNKNOWN": 20.0,
 }
 
-
-# Additional continuous risk contribution.
-# This allows two HIGH zones with different risk scores
-# to have different routing costs.
 CONTINUOUS_RISK_WEIGHT = 5.0
-
-
-# Missing sensor data is not considered safe.
-# It remains traversable so one missing sensor does not
-# completely destroy the evacuation network, but the route
-# receives a caution penalty.
 UNKNOWN_RISK_SCORE = 50.0
+
+# Corridors and staircases currently have no individual
+# sensor inputs in the building layout.
+INFRASTRUCTURE_SENSORS_AVAILABLE = False
+
+ROUTING_RISK_LEVELS = {
+    "WARNING",
+    "MODERATE",
+    "HIGH",
+    "CRITICAL",
+    "UNKNOWN",
+}
 
 
 # =========================================================
@@ -55,15 +53,6 @@ UNKNOWN_RISK_SCORE = 50.0
 # =========================================================
 
 def build_graph():
-    """
-    Build an undirected graph from the physical building edges.
-
-    The graph contains:
-        - rooms
-        - corridor sections
-        - stair nodes
-        - exit nodes
-    """
 
     graph = {}
 
@@ -100,26 +89,41 @@ def is_stair(node):
     return str(node).startswith("STAIR_")
 
 
+def get_node_floor(node):
+
+    if node in ROOMS:
+        return ROOMS[node].get("floor")
+
+    if node in CORRIDORS:
+        return CORRIDORS[node].get("floor")
+
+    if is_stair(node):
+
+        for stair in STAIRS.values():
+            for floor, landing in stair.get(
+                "floor_connections", {}
+            ).items():
+
+                if landing == node:
+                    return floor
+
+    for exit_name, exit_node in EXIT_NODES.items():
+
+        if exit_node == node:
+            return EXITS[exit_name].get("floor")
+
+    return None
+
+
 def node_risk(node, risk_map):
-    """
-    Return normalized risk information for a node.
-
-    Room nodes use live sensor intelligence.
-
-    Non-room topology nodes such as corridors and stairs do
-    not currently have individual sensors, so they are treated
-    as LOW physical-topology nodes.
-
-    Missing room sensor data is explicitly represented as
-    UNKNOWN rather than silently becoming LOW.
-    """
 
     if node in risk_map:
+
         risk = risk_map[node]
 
         return {
             "risk_score": float(
-                risk.get("risk_score", 0.0)
+                risk.get("risk_score", UNKNOWN_RISK_SCORE)
             ),
             "risk_level": str(
                 risk.get("risk_level", "UNKNOWN")
@@ -132,16 +136,15 @@ def node_risk(node, risk_map):
             ),
         }
 
-    # Topology nodes without individual sensors.
     if node in CORRIDORS or is_stair(node) or is_exit(node):
+
         return {
-            "risk_score": 0.0,
-            "risk_level": "LOW",
+            "risk_score": UNKNOWN_RISK_SCORE,
+            "risk_level": "UNKNOWN",
             "occupancy": 0,
             "sensor_available": False,
         }
 
-    # A room without current sensor information.
     return {
         "risk_score": UNKNOWN_RISK_SCORE,
         "risk_level": "UNKNOWN",
@@ -155,89 +158,28 @@ def node_risk(node, risk_map):
 # =========================================================
 
 def edge_cost(current, neighbor, risk_map, start):
-    """
-    Calculate movement cost from current -> neighbor.
 
-    Priority:
-
-        EXIT
-        ↓
-        STAIR
-        ↓
-        CORRIDOR
-        ↓
-        ROOM
-        ↓
-        NORMAL
-
-    Risk is applied to room entry.
-
-    Rules:
-        - The starting critical room is allowed.
-        - Another critical room cannot be entered.
-        - HIGH/MODERATE rooms remain traversable.
-        - UNKNOWN rooms remain traversable with a caution penalty.
-        - Corridors have normal movement cost.
-        - Stairs have higher physical movement cost.
-        - Exit nodes are terminal.
-    """
-
-    # =====================================================
-    # EXIT
-    # =====================================================
+    if is_exit(current):
+        return inf
 
     if is_exit(neighbor):
         return EXIT_EDGE_COST
 
-    # Once an exit has been reached, it is terminal.
-    if is_exit(current):
-        return inf
-
-    # =====================================================
-    # STAIR
-    # =====================================================
-
-    if is_stair(neighbor) or is_stair(current):
-        return STAIR_EDGE_COST
-
-    # =====================================================
-    # CORRIDOR
-    # =====================================================
-
-    if is_corridor(neighbor) or is_corridor(current):
-        return CORRIDOR_EDGE_COST
-
-    # =====================================================
-    # ROOM RISK
-    # =====================================================
-
+    # Avoid entering another critical-risk room.
     if is_room(neighbor):
 
-        risk = node_risk(
-            neighbor,
-            risk_map,
-        )
+        risk = node_risk(neighbor, risk_map)
 
-        level = str(
-            risk.get("risk_level", "UNKNOWN")
-        ).upper()
+        level = risk["risk_level"]
 
-        # Critical zones cannot be entered.
-        # The starting critical zone is allowed because
-        # occupants are already inside it.
         if level == "CRITICAL" and neighbor != start:
             return inf
 
-        score = float(
-            risk.get(
-                "risk_score",
-                UNKNOWN_RISK_SCORE,
-            )
-        )
+        score = risk["risk_score"]
 
         level_penalty = RISK_PENALTY.get(
             level,
-            RISK_PENALTY["UNKNOWN"],
+            RISK_PENALTY["UNKNOWN"]
         )
 
         continuous_penalty = (
@@ -250,30 +192,74 @@ def edge_cost(current, neighbor, risk_map, start):
             + continuous_penalty
         )
 
+    if is_stair(neighbor) or is_stair(current):
+        return STAIR_EDGE_COST
+
+    if is_corridor(neighbor) or is_corridor(current):
+        return CORRIDOR_EDGE_COST
+
     return NORMAL_EDGE_COST
 
 
+# =========================================================
+# PATH RECONSTRUCTION
+# =========================================================
+
+def reconstruct_path(previous, start, target):
+
+    if start == target:
+        return [start]
+
+    if target not in previous:
+        return None
+
+    path = [target]
+    current = target
+
+    while current != start:
+
+        current = previous.get(current)
+
+        if current is None:
+            return None
+
+        path.append(current)
+
+    path.reverse()
+
+    return path
+
 
 # =========================================================
-# SHORTEST SAFE PHYSICAL PATH
+# BREADTH-FIRST SEARCH
 # =========================================================
-
 
 def bfs_path(start, target):
+
+    if start not in BUILDING_GRAPH:
+        return None
+
+    if target not in BUILDING_GRAPH:
+        return None
+
     queue = deque([start])
     visited = {start}
-    nodes_explored = 0
     previous = {}
 
+    nodes_explored = 0
+
     while queue:
+
         current = queue.popleft()
         nodes_explored += 1
 
         if current == target:
             break
 
-        for neighbor in BUILDING_GRAPH[current]:
+        for neighbor in BUILDING_GRAPH.get(current, []):
+
             if neighbor not in visited:
+
                 visited.add(neighbor)
                 previous[neighbor] = current
                 queue.append(neighbor)
@@ -281,39 +267,59 @@ def bfs_path(start, target):
     if target not in visited:
         return None
 
-    path = [target]
-    current = target
-
-    while current != start:
-        current = previous[current]
-        path.append(current)
-
-    path.reverse()
+    path = reconstruct_path(
+        previous,
+        start,
+        target
+    )
 
     return {
-    "path": path,
-    "edges": len(path) - 1,
-    "nodes_explored": nodes_explored
-}
+        "path": path,
+        "edges": len(path) - 1,
+        "nodes_explored": nodes_explored
+    }
+
+
 def test_bfs():
-    result = bfs_path("101", "EXIT_A")
+
+    result = bfs_path(
+        "101",
+        EXIT_NODES["EXIT 1"]
+    )
+
     print("BFS TEST PATH:", result)
 
+
+# =========================================================
+# DEPTH-FIRST SEARCH
+# =========================================================
+
 def dfs_path(start, target):
+
+    if start not in BUILDING_GRAPH:
+        return None
+
+    if target not in BUILDING_GRAPH:
+        return None
+
     stack = [start]
     visited = {start}
-    nodes_explored = 0
     previous = {}
 
+    nodes_explored = 0
+
     while stack:
+
         current = stack.pop()
         nodes_explored += 1
 
         if current == target:
             break
 
-        for neighbor in BUILDING_GRAPH[current]:
+        for neighbor in BUILDING_GRAPH.get(current, []):
+
             if neighbor not in visited:
+
                 visited.add(neighbor)
                 previous[neighbor] = current
                 stack.append(neighbor)
@@ -321,46 +327,56 @@ def dfs_path(start, target):
     if target not in visited:
         return None
 
-    path = [target]
-    current = target
-
-    while current != start:
-        current = previous[current]
-        path.append(current)
-
-    path.reverse()
+    path = reconstruct_path(
+        previous,
+        start,
+        target
+    )
 
     return {
-    "path": path,
-    "edges": len(path) - 1,
-    "nodes_explored": nodes_explored
-}
+        "path": path,
+        "edges": len(path) - 1,
+        "nodes_explored": nodes_explored
+    }
+
+
+# =========================================================
+# A-STAR SEARCH
+# =========================================================
 
 def a_star_path(start, target, risk_map):
-    distances = {target: 0}
-    queue = [target]
 
-    while queue:
-        current = queue.pop(0)
+    if start not in BUILDING_GRAPH:
+        return None
 
-        for neighbor in BUILDING_GRAPH.get(current, []):
-            if neighbor not in distances:
-                distances[neighbor] = distances[current] + 1
-                queue.append(neighbor)
+    if target not in BUILDING_GRAPH:
+        return None
 
+    # Zero heuristic keeps the search optimal.
+    # This makes it equivalent to Dijkstra here.
     def heuristic(node):
-        return distances.get(node, 0)
+        return 0.0
 
-    open_set = [(heuristic(start), 0, start)]
+    open_set = [
+        (heuristic(start), 0.0, start)
+    ]
+
     previous = {}
-    g_score = {start: 0}
+    g_score = {
+        start: 0.0
+    }
+
     visited = set()
     nodes_explored = 0
 
     while open_set:
+
         _, current_cost, current = heappop(open_set)
 
         if current in visited:
+            continue
+
+        if current_cost > g_score.get(current, inf):
             continue
 
         visited.add(current)
@@ -372,11 +388,17 @@ def a_star_path(start, target, risk_map):
         if is_exit(current):
             continue
 
-        for neighbor in BUILDING_GRAPH[current]:
+        for neighbor in BUILDING_GRAPH.get(current, []):
+
             if neighbor in visited:
                 continue
 
-            cost = edge_cost(current, neighbor, risk_map, start)
+            cost = edge_cost(
+                current,
+                neighbor,
+                risk_map,
+                start
+            )
 
             if cost == inf:
                 continue
@@ -384,27 +406,30 @@ def a_star_path(start, target, risk_map):
             new_score = current_cost + cost
 
             if new_score < g_score.get(neighbor, inf):
+
                 g_score[neighbor] = new_score
                 previous[neighbor] = current
 
-                f_score = new_score + heuristic(neighbor)
+                f_score = (
+                    new_score + heuristic(neighbor)
+                )
 
                 heappush(
                     open_set,
                     (f_score, new_score, neighbor)
                 )
 
-    if target not in previous and start != target:
+    if target not in g_score:
         return None
 
-    path = [target]
-    current = target
+    path = reconstruct_path(
+        previous,
+        start,
+        target
+    )
 
-    while current != start:
-        current = previous[current]
-        path.append(current)
-
-    path.reverse()
+    if path is None:
+        return None
 
     return {
         "path": path,
@@ -412,16 +437,13 @@ def a_star_path(start, target, risk_map):
         "edges": len(path) - 1,
         "nodes_explored": nodes_explored
     }
+
+
+# =========================================================
+# DIJKSTRA SHORTEST PATH
+# =========================================================
+
 def shortest_path(start, target, risk_map):
-    """
-    Dijkstra shortest-path search using the physical
-    Building Alpha topology and dynamic room risk.
-
-    A critical starting room is allowed because people
-    are already inside that room and must escape.
-
-    Other critical rooms are blocked from entry.
-    """
 
     if start not in BUILDING_GRAPH:
         return None
@@ -438,9 +460,7 @@ def shortest_path(start, target, risk_map):
 
     distances[start] = 0.0
 
-    queue = [
-        (0.0, start)
-    ]
+    queue = [(0.0, start)]
 
     visited = set()
     nodes_explored = 0
@@ -449,9 +469,11 @@ def shortest_path(start, target, risk_map):
 
         distance, current = heappop(queue)
 
-        if current in visited or distance > distances[current]:
-           continue
+        if current in visited:
+            continue
 
+        if distance > distances[current]:
+            continue
 
         visited.add(current)
         nodes_explored += 1
@@ -462,7 +484,7 @@ def shortest_path(start, target, risk_map):
         if is_exit(current):
             continue
 
-        for neighbor in BUILDING_GRAPH[current]:
+        for neighbor in BUILDING_GRAPH.get(current, []):
 
             if neighbor in visited:
                 continue
@@ -471,7 +493,7 @@ def shortest_path(start, target, risk_map):
                 current,
                 neighbor,
                 risk_map,
-                start,
+                start
             )
 
             if cost == inf:
@@ -482,62 +504,38 @@ def shortest_path(start, target, risk_map):
             if candidate < distances[neighbor]:
 
                 distances[neighbor] = candidate
-
                 previous[neighbor] = current
 
                 heappush(
                     queue,
-                    (
-                        candidate,
-                        neighbor,
-                    ),
+                    (candidate, neighbor)
                 )
 
     if distances[target] == inf:
         return None
 
-    # =====================================================
-    # RECONSTRUCT PATH
-    # =====================================================
+    path = reconstruct_path(
+        previous,
+        start,
+        target
+    )
 
-    path = [target]
-    current = target
-
-    while current != start:
-
-        if current not in previous:
-            return None
-
-        current = previous[current]
-        path.append(current)
-
-    path.reverse()
+    if path is None:
+        return None
 
     return {
-    "path": path,
-    "cost": round(distances[target], 2),
-    "edges": len(path) - 1,
-    "nodes_explored": nodes_explored,
-}
+        "path": path,
+        "cost": round(distances[target], 2),
+        "edges": len(path) - 1,
+        "nodes_explored": nodes_explored
+    }
+
 
 # =========================================================
 # PATH RISK ANALYSIS
 # =========================================================
 
 def analyze_path(path, risk_map):
-    """
-    Analyze every room appearing in an evacuation path.
-
-    The starting room is included in the risk statistics.
-
-    A critical starting room does NOT block the route.
-
-    A critical room encountered after the starting room
-    makes the route BLOCKED.
-
-    UNKNOWN room sensor data produces CAUTION rather than
-    being treated as safe.
-    """
 
     critical = []
     high = []
@@ -545,155 +543,107 @@ def analyze_path(path, risk_map):
     unknown = []
     scores = []
 
-    # =====================================================
-    # ANALYZE ROOMS
-    # =====================================================
+    unmonitored_corridors = []
+    unmonitored_stairs = []
 
     for node in path:
 
-        if node not in ROOMS:
-            continue
+        if is_room(node):
 
-        risk = node_risk(
-            node,
-            risk_map,
-        )
+            risk = node_risk(node, risk_map)
 
-        level = str(
-            risk.get(
-                "risk_level",
-                "UNKNOWN",
-            )
-        ).upper()
+            level = risk["risk_level"]
+            score = risk["risk_score"]
 
-        score = float(
-            risk.get(
-                "risk_score",
-                UNKNOWN_RISK_SCORE,
-            )
-        )
+            scores.append(score)
 
-        scores.append(score)
+            if level == "CRITICAL":
+                critical.append(node)
 
-        if level == "CRITICAL":
-            critical.append(node)
+            elif level == "HIGH":
+                high.append(node)
 
-        elif level == "HIGH":
-            high.append(node)
+            elif level in ("MODERATE", "WARNING"):
+                moderate.append(node)
 
-        elif level == "MODERATE":
-            moderate.append(node)
+            elif level == "UNKNOWN":
+                unknown.append(node)
 
-        elif level == "UNKNOWN":
-            unknown.append(node)
+        elif is_corridor(node):
 
-    # =====================================================
-    # RISK STATISTICS
-    # =====================================================
+            unmonitored_corridors.append(node)
+
+        elif is_stair(node):
+
+            unmonitored_stairs.append(node)
 
     average = (
         sum(scores) / len(scores)
-        if scores
-        else 0.0
+        if scores else 0.0
     )
 
     maximum = (
         max(scores)
-        if scores
-        else 0.0
+        if scores else 0.0
     )
 
-    # =====================================================
-    # CRITICAL ZONES AFTER START
-    # =====================================================
-
-    blocking_critical = []
-
-    for index, node in enumerate(path):
-
-        # The first node is always the evacuation origin.
-        if index == 0:
-            continue
-
-        if node not in ROOMS:
-            continue
-
-        risk = node_risk(
-            node,
-            risk_map,
-        )
-
-        level = str(
-            risk.get(
-                "risk_level",
-                "UNKNOWN",
-            )
-        ).upper()
-
-        if level == "CRITICAL":
-            blocking_critical.append(node)
-
-    # =====================================================
-    # ROUTE STATUS
-    # =====================================================
+    # A critical room cannot be used as an intermediate
+    # node. The starting room is allowed for evacuation.
+    blocking_critical = [
+        node
+        for index, node in enumerate(path)
+        if index > 0
+        and is_room(node)
+        and node_risk(node, risk_map)["risk_level"] == "CRITICAL"
+    ]
 
     if blocking_critical:
 
         status = "BLOCKED"
-
-        reason = (
-            "A critical-risk zone blocks this path."
-        )
+        reason = "A critical-risk room blocks this route."
 
     elif unknown:
 
         status = "CAUTION"
-
         reason = (
-            "The path contains a zone with unavailable "
+            "One or more rooms have unavailable "
             "sensor intelligence."
         )
 
-    elif maximum >= 60:
+    elif not INFRASTRUCTURE_SENSORS_AVAILABLE and (
+        unmonitored_corridors or unmonitored_stairs
+    ):
 
         status = "CAUTION"
-
         reason = (
-            "The evacuation starts in or passes through "
-            "a critical-risk condition."
+            "Corridor or staircase sensor data is unavailable. "
+            "This route requires on-site verification."
         )
 
     elif maximum >= 35:
 
         status = "CAUTION"
-
-        reason = (
-            "The path contains elevated-risk conditions."
-        )
+        reason = "The route contains elevated-risk conditions."
 
     else:
 
         status = "AVAILABLE"
-
-        reason = (
-            "Path is clear of significant hazards."
-        )
+        reason = "No significant monitored hazard was detected."
 
     return {
         "status": status,
         "reason": reason,
-        "average_risk": round(
-            average,
-            2,
-        ),
-        "maximum_risk": round(
-            maximum,
-            2,
-        ),
+        "average_risk": round(average, 2),
+        "maximum_risk": round(maximum, 2),
         "critical_zones": critical,
         "high_zones": high,
         "moderate_zones": moderate,
         "unknown_zones": unknown,
+        "unmonitored_corridors": unmonitored_corridors,
+        "unmonitored_stairs": unmonitored_stairs,
+        "infrastructure_sensor_coverage": (
+            INFRASTRUCTURE_SENSORS_AVAILABLE
+        )
     }
 
 
@@ -701,42 +651,19 @@ def analyze_path(path, risk_map):
 # ROUTE SCORE
 # =========================================================
 
-def calculate_route_score(
-    analysis,
-    physical_cost,
-):
-    """
-    Convert route characteristics into one comparable
-    0-100 evacuation risk score.
-
-    Components:
-
-        Average room risk  -> 60%
-        Maximum room risk  -> 25%
-        Physical cost      -> 15%
-
-    The score is used for comparing available exits.
-    """
+def calculate_route_score(analysis, physical_cost):
 
     average_risk = float(
-        analysis.get(
-            "average_risk",
-            0.0,
-        )
+        analysis.get("average_risk", 0.0)
     )
 
     maximum_risk = float(
-        analysis.get(
-            "maximum_risk",
-            0.0,
-        )
+        analysis.get("maximum_risk", 0.0)
     )
 
-    # Keep the physical component bounded so a long but
-    # otherwise safe route does not dominate the risk.
     physical_component = min(
         100.0,
-        float(physical_cost) * 5.0,
+        float(physical_cost) * 5.0
     )
 
     score = (
@@ -745,120 +672,149 @@ def calculate_route_score(
         + physical_component * 0.15
     )
 
+    # Unmonitored infrastructure increases uncertainty.
+    if (
+        analysis.get("unmonitored_corridors")
+        or analysis.get("unmonitored_stairs")
+    ):
+        score += 10.0
+
+    if analysis.get("unknown_zones"):
+        score += 10.0
+
     return round(
-        min(
-            100.0,
-            score,
-        ),
-        2,
+        min(100.0, score),
+        2
     )
 
 
 # =========================================================
-# CALCULATE ONE ZONE -> EXIT ROUTE
+# ROUTE SELECTION
 # =========================================================
 
-def calculate_route(
-    zone_id,
-    exit_name,
-    risk_map,
-):
-    """
-    Calculate one complete evacuation option:
+def select_recommended_route(routes, zone_id):
 
-        zone → physical topology → exit
-    """
+    zone_floor = ROOMS[str(zone_id)]["floor"]
+
+    available = [
+        route for route in routes
+        if route and route["status"] == "AVAILABLE"
+    ]
+
+    caution = [
+        route for route in routes
+        if route and route["status"] == "CAUTION"
+    ]
+
+    # Safety status takes priority.
+    candidates = available or caution
+
+    if not candidates:
+        return None
+
+    # Prefer a same-floor exit among routes with the
+    # best available safety status.
+    same_floor = [
+        route for route in candidates
+        if route.get("exit_floor") == zone_floor
+    ]
+
+    if same_floor:
+        candidates = same_floor
+
+    return min(
+        candidates,
+        key=lambda route: (
+            route["risk_score"],
+            route["distance"] if route["distance"] is not None else inf
+        )
+    )
+
+
+# =========================================================
+# CALCULATE ONE ZONE TO EXIT ROUTE
+# =========================================================
+
+def calculate_route(zone_id, exit_name, risk_map):
 
     zone_id = str(zone_id)
 
-    exit_config = EXITS.get(
-        exit_name
-    )
+    exit_config = EXITS.get(exit_name)
 
-    if zone_id not in ROOMS:
+    if zone_id not in ROOMS or not exit_config:
         return None
 
-    if not exit_config:
-        return None
-
-    target = EXIT_NODES.get(
-        exit_name
-    )
+    target = EXIT_NODES.get(exit_name)
 
     if not target:
         return None
 
-    # =====================================================
-    # DEFAULT BLOCKED RESPONSE
-    # =====================================================
+    zone_floor = ROOMS[zone_id]["floor"]
+    exit_floor = exit_config["floor"]
 
     base = {
         "exit": exit_name,
         "name": exit_config["name"],
+        "exit_floor": exit_floor,
+        "same_floor": zone_floor == exit_floor,
         "status": "BLOCKED",
         "risk_score": 100.0,
-        "reason": (
-            "No safe physical path exists."
-        ),
+        "reason": "No route is available.",
         "path": [],
         "distance": None,
+        "cost": None,
+        "edges": None,
+        "average_risk": 100.0,
+        "maximum_risk": 100.0,
         "critical_zones": [],
         "high_zones": [],
         "moderate_zones": [],
         "unknown_zones": [],
-        "average_risk": 100.0,
-        "maximum_risk": 100.0,
+        "unmonitored_corridors": [],
+        "unmonitored_stairs": [],
+        "infrastructure_sensor_coverage": (
+            INFRASTRUCTURE_SENSORS_AVAILABLE
+        )
     }
 
-    # =====================================================
-    # FIND PHYSICAL PATH
-    # =====================================================
+    # CHANGE 1:
+    # Do not recommend evacuation to a higher floor.
+    if exit_floor > zone_floor:
+        base["reason"] = (
+            "Upward evacuation is not permitted. "
+            "Use a same-floor or lower-floor emergency exit."
+        )
+        return base
 
     result = shortest_path(
         zone_id,
         target,
-        risk_map,
+        risk_map
     )
 
     if result is None:
         return base
 
-    # =====================================================
-    # ANALYZE PATH
-    # =====================================================
-
     analysis = analyze_path(
         result["path"],
-        risk_map,
+        risk_map
     )
-
-    # =====================================================
-    # FINAL ROUTE SCORE
-    # =====================================================
 
     final_score = calculate_route_score(
         analysis,
-        result["cost"],
+        result["cost"]
     )
 
-    # Use the status determined by analyze_path(), which correctly
-    # uses `blocking_critical` (excludes the starting room) for the
-    # BLOCKED decision. Do NOT re-derive from critical_zones here
-    # because that list includes the starting room and would
-    # incorrectly mark every route as BLOCKED when the origin zone
-    # is CRITICAL.
-    status = analysis["status"]
-
     return {
-    **base,
-    **analysis,
-    "status": status,
-    "risk_score": final_score,
-    "path": result["path"],
-    "distance": result["edges"],
-    "cost": result["cost"],
-    "edges": result["edges"],
-}
+        **base,
+        **analysis,
+        "status": analysis["status"],
+        "risk_score": final_score,
+        "path": result["path"],
+        "distance": result["edges"],
+        "cost": result["cost"],
+        "edges": result["edges"]
+    }
 
 
 # =========================================================
@@ -866,93 +822,66 @@ def calculate_route(
 # =========================================================
 
 def build_risk_map(sensors):
-    """
-    Convert sensor intelligence into a zone-indexed map.
-
-    Only actual Building Alpha rooms are included.
-
-    Missing zones are NOT fabricated here. They remain
-    absent and are interpreted as UNKNOWN by node_risk().
-    """
 
     risk_map = {}
 
     for sensor in sensors:
 
         zone_id = str(
-            sensor.get(
-                "zone_id",
-                "",
-            )
+            sensor.get("zone_id", "")
         )
 
         if zone_id not in ROOMS:
             continue
 
-        raw_level = sensor.get(
-            "risk_level"
+        raw_level = sensor.get("risk_level")
+
+        risk_level = (
+            str(raw_level).upper()
+            if raw_level is not None
+            else "UNKNOWN"
         )
 
-        if raw_level is None:
+        if risk_level == "WARNING":
+            risk_level = "MODERATE"
+
+        if risk_level not in RISK_PENALTY:
             risk_level = "UNKNOWN"
-        else:
-            risk_level = str(
-                raw_level
-            ).upper()
 
-        raw_score = sensor.get(
-            "risk_score"
-        )
+        raw_score = sensor.get("risk_score")
 
-        if raw_score is None:
+        try:
+
+            risk_score = float(raw_score)
+
+        except (TypeError, ValueError):
+
             risk_score = (
                 UNKNOWN_RISK_SCORE
                 if risk_level == "UNKNOWN"
                 else 0.0
             )
-        else:
-            try:
-                risk_score = float(
-                    raw_score
-                )
-            except (
-                TypeError,
-                ValueError,
-            ):
-                risk_score = (
-                    UNKNOWN_RISK_SCORE
-                    if risk_level == "UNKNOWN"
-                    else 0.0
-                )
 
         try:
+
             occupancy = int(
-                sensor.get(
-                    "occupancy",
-                    0,
-                )
-                or 0
+                sensor.get("occupancy", 0) or 0
             )
-        except (
-            TypeError,
-            ValueError,
-        ):
+
+        except (TypeError, ValueError):
+
             occupancy = 0
 
+        # Latest sensor record for a zone overwrites
+        # the earlier record.
         risk_map[zone_id] = {
             "risk_score": max(
                 0.0,
-                min(
-                    100.0,
-                    risk_score,
-                ),
+                min(100.0, risk_score)
             ),
             "risk_level": risk_level,
-            "occupancy": max(
-                0,
-                occupancy,
-            ),
-            "sensor_available": True,
+            "occupancy": max(0, occupancy),
+            "sensor_available": True
         }
 
     return risk_map
@@ -962,23 +891,24 @@ def build_risk_map(sensors):
 # CALCULATE ALL EXIT OPTIONS FOR ONE ZONE
 # =========================================================
 
-def calculate_zone_routes(
-    zone_id,
-    risk_map,
-):
-    """
-    Return all three exit options for one zone.
-    """
+def calculate_zone_routes(zone_id, risk_map):
 
     return [
         calculate_route(
             zone_id,
             exit_name,
-            risk_map,
+            risk_map
         )
         for exit_name in EXITS
     ]
+
+
+# =========================================================
+# PATH RISK SUMMARY
+# =========================================================
+
 def calculate_path_risk(path, risk_map):
+
     if not path:
         return None
 
@@ -988,19 +918,24 @@ def calculate_path_risk(path, risk_map):
     unknown_rooms = 0
 
     for node in path:
-        if is_room(node):
-            risk = node_risk(node, risk_map)
 
-            total_risk += risk["risk_score"]
+        if not is_room(node):
+            continue
 
-            level = risk["risk_level"]
+        risk = node_risk(node, risk_map)
 
-            if level == "HIGH":
-                high_risk_rooms += 1
-            elif level == "CRITICAL":
-                critical_rooms += 1
-            elif level == "UNKNOWN":
-                unknown_rooms += 1
+        total_risk += risk["risk_score"]
+
+        level = risk["risk_level"]
+
+        if level == "HIGH":
+            high_risk_rooms += 1
+
+        elif level == "CRITICAL":
+            critical_rooms += 1
+
+        elif level == "UNKNOWN":
+            unknown_rooms += 1
 
     return {
         "total_risk": round(total_risk, 2),
@@ -1009,11 +944,16 @@ def calculate_path_risk(path, risk_map):
         "unknown_rooms": unknown_rooms
     }
 
+
+# =========================================================
+# COMPARE ROUTING ALGORITHMS
+# =========================================================
+
 def compare_algorithms(zone_id, risk_map):
-    exits = EXIT_NODES.values()
+
     results = []
 
-    for target in exits:
+    for exit_name, target in EXIT_NODES.items():
 
         start_time = perf_counter()
         bfs = bfs_path(zone_id, target)
@@ -1024,83 +964,103 @@ def compare_algorithms(zone_id, risk_map):
         dfs_time = (perf_counter() - start_time) * 1000
 
         start_time = perf_counter()
-        dijkstra = shortest_path(zone_id, target, risk_map)
+        dijkstra = shortest_path(
+            zone_id,
+            target,
+            risk_map
+        )
         dijkstra_time = (perf_counter() - start_time) * 1000
 
         start_time = perf_counter()
-        astar = a_star_path(zone_id, target, risk_map)
+        astar = a_star_path(
+            zone_id,
+            target,
+            risk_map
+        )
         astar_time = (perf_counter() - start_time) * 1000
 
         results.append({
+
             "exit": target,
-           "bfs": {
-    "path": bfs["path"] if bfs else None,
-    "edges": bfs["edges"] if bfs else None,
-    "nodes_explored": bfs["nodes_explored"] if bfs else None,
-    "execution_time_ms": round(bfs_time, 4),
-    "risk_exposure": calculate_path_risk(bfs["path"] if bfs else None, risk_map),
-},
-          "dfs": {
-    "path": dfs["path"] if dfs else None,
-    "edges": dfs["edges"] if dfs else None,
-    "nodes_explored": dfs["nodes_explored"] if dfs else None,
-    "execution_time_ms": round(dfs_time, 4),
-    "risk_exposure": calculate_path_risk(dfs["path"] if dfs else None, risk_map),
-},
-          "dijkstra": {
-    "path": dijkstra["path"] if dijkstra else None,
-    "cost": dijkstra["cost"] if dijkstra else None,
-    "edges": dijkstra["edges"] if dijkstra else None,
-    "nodes_explored": dijkstra["nodes_explored"] if dijkstra else None,
-    "execution_time_ms": round(dijkstra_time, 4),
-    "risk_exposure": calculate_path_risk(dijkstra["path"] if dijkstra else None, risk_map),
-},
-          "a_star": {
-    "path": astar["path"] if astar else None,
-    "cost": astar["cost"] if astar else None,
-    "edges": astar["edges"] if astar else None,
-    "nodes_explored": astar["nodes_explored"] if astar else None,
-    "execution_time_ms": round(astar_time, 4),
-    "risk_exposure": calculate_path_risk(astar["path"] if astar else None, risk_map),
-},
+
+            "bfs": {
+                "path": bfs["path"] if bfs else None,
+                "edges": bfs["edges"] if bfs else None,
+                "nodes_explored": (
+                    bfs["nodes_explored"] if bfs else None
+                ),
+                "execution_time_ms": round(bfs_time, 4),
+                "risk_exposure": calculate_path_risk(
+                    bfs["path"] if bfs else None,
+                    risk_map
+                )
+            },
+
+            "dfs": {
+                "path": dfs["path"] if dfs else None,
+                "edges": dfs["edges"] if dfs else None,
+                "nodes_explored": (
+                    dfs["nodes_explored"] if dfs else None
+                ),
+                "execution_time_ms": round(dfs_time, 4),
+                "risk_exposure": calculate_path_risk(
+                    dfs["path"] if dfs else None,
+                    risk_map
+                )
+            },
+
+            "dijkstra": {
+                "path": dijkstra["path"] if dijkstra else None,
+                "cost": dijkstra["cost"] if dijkstra else None,
+                "edges": dijkstra["edges"] if dijkstra else None,
+                "nodes_explored": (
+                    dijkstra["nodes_explored"]
+                    if dijkstra else None
+                ),
+                "execution_time_ms": round(dijkstra_time, 4),
+                "risk_exposure": calculate_path_risk(
+                    dijkstra["path"] if dijkstra else None,
+                    risk_map
+                )
+            },
+
+            "a_star": {
+                "path": astar["path"] if astar else None,
+                "cost": astar["cost"] if astar else None,
+                "edges": astar["edges"] if astar else None,
+                "nodes_explored": (
+                    astar["nodes_explored"]
+                    if astar else None
+                ),
+                "execution_time_ms": round(astar_time, 4),
+                "risk_exposure": calculate_path_risk(
+                    astar["path"] if astar else None,
+                    risk_map
+                )
+            }
         })
 
     return results
+
+
 # =========================================================
 # ROUTE WEIGHT
 # =========================================================
 
-def _route_weight(
-    route,
-    risk_map,
-    zone_id,
-):
-    """
-    Weight helper retained for compatibility.
-
-    Routes are primarily ordered by safety score.
-    Occupancy is used for building-level aggregation,
-    not to make one person's route inherently less safe.
-    """
+def _route_weight(route, risk_map, zone_id):
 
     occupancy = max(
         0,
         int(
-            risk_map
-            .get(
-                zone_id,
-                {},
+            risk_map.get(zone_id, {}).get(
+                "occupancy", 0
             )
-            .get(
-                "occupancy",
-                0,
-            )
-        ),
+        )
     )
 
     return (
         route["risk_score"],
-        -occupancy,
+        -occupancy
     )
 
 
@@ -1109,127 +1069,82 @@ def _route_weight(
 # =========================================================
 
 def calculate_all_routes(sensors, selected_zone=None):
-    """
-    Calculate evacuation intelligence for the entire building.
 
-    Returns:
-
-        - zone-by-zone routes
-        - exit-level analysis
-        - building-level recommendation
-        - alternative exits
-        - risk statistics
-        - building graph
-    """
-
-    risk_map = build_risk_map(
-        sensors
-    )
+    risk_map = build_risk_map(sensors)
 
     zones = []
 
     # =====================================================
-    # ZONE-BY-ZONE ROUTES
+    # DYNAMIC ROUTES FOR EVERY MONITORED ROOM
     # =====================================================
 
-    for sensor in sensors:
-
-        zone_id = str(
-            sensor.get(
-                "zone_id",
-                "",
-            )
-        )
-
-        if zone_id not in ROOMS:
-            continue
+    for zone_id, zone_risk in risk_map.items():
 
         routes = calculate_zone_routes(
             zone_id,
-            risk_map,
+            risk_map
         )
 
-        # -------------------------------------------------
-        # AVAILABLE
-        # -------------------------------------------------
-
-        available = [
-            route
-            for route in routes
-            if route
-            and route["status"]
-            == "AVAILABLE"
-        ]
-
-        # -------------------------------------------------
-        # CAUTION
-        # -------------------------------------------------
-
-        caution = [
-            route
-            for route in routes
-            if route
-            and route["status"]
-            == "CAUTION"
-        ]
-
-        # Safe routes are always preferred over caution
-        # routes.
-        candidates = (
-            available
-            or caution
+        recommended = select_recommended_route(
+            routes,
+            zone_id
         )
 
-        recommended = (
-            min(
-                candidates,
-                key=lambda route:
-                route["risk_score"],
-            )
-            if candidates
-            else None
-        )
-
+        # CHANGE 2:
+        # Include only physically reachable routes that
+        # are AVAILABLE or CAUTION.
         alternatives = sorted(
             [
                 route
                 for route in routes
-                if (
-                    route
-                    and route["status"]
-                    != "BLOCKED"
-                    and (
-                        not recommended
-                        or route["exit"]
-                        != recommended["exit"]
-                    )
+                if route
+                and route["status"] in ("AVAILABLE", "CAUTION")
+                and (
+                    recommended is None
+                    or route["exit"] != recommended["exit"]
                 )
             ],
-            key=lambda route:
-            route["risk_score"],
+            key=lambda route: (
+                route["risk_score"],
+                route["distance"]
+                if route["distance"] is not None
+                else inf
+            )
         )
 
         zones.append({
+
             "zone_id": zone_id,
 
-            "floor": ROOMS[
-                zone_id
-            ]["floor"],
+            "floor": ROOMS[zone_id]["floor"],
+
+            "risk_level": zone_risk["risk_level"],
+
+            "risk_score": zone_risk["risk_score"],
+
+            "occupancy": zone_risk["occupancy"],
 
             "recommended_exit": recommended,
 
             "alternative_exits": alternatives,
 
             "all_routes": routes,
+
+            "route_status": (
+                recommended["status"]
+                if recommended
+                else "NO SAFE ROUTE AVAILABLE"
+            )
         })
+
     selected_zone_data = next(
         (
-            zone
-            for zone in zones
+            zone for zone in zones
             if zone["zone_id"] == str(selected_zone)
         ),
-        None,
+        None
     )
+
     # =====================================================
     # BUILDING-LEVEL EXIT ANALYSIS
     # =====================================================
@@ -1245,93 +1160,37 @@ def calculate_all_routes(sensors, selected_zone=None):
             route = calculate_route(
                 zone_id,
                 exit_name,
-                risk_map,
+                risk_map
             )
 
             if route is not None:
-                route_records.append(
-                    (
-                        zone_id,
-                        route,
-                    )
-                )
-
-        # -------------------------------------------------
-        # USABLE ROUTES
-        # -------------------------------------------------
+                route_records.append((zone_id, route))
 
         usable = [
-            (
-                zone_id,
-                route,
-            )
-            for zone_id, route
-            in route_records
-            if route["status"]
-            != "BLOCKED"
+            (zone_id, route)
+            for zone_id, route in route_records
+            if route["status"] in ("AVAILABLE", "CAUTION")
         ]
 
         connected = sorted(
-            [
-                zone_id
-                for zone_id, _
-                in usable
-            ],
-            key=int,
+            [zone_id for zone_id, _ in usable],
+            key=int
         )
-
-        # -------------------------------------------------
-        # EXIT HAS USABLE ROUTES
-        # -------------------------------------------------
 
         if usable:
 
-            # Actual occupancy only.
             total_people = sum(
-                max(
-                    0,
-                    int(
-                        risk_map[
-                            zone_id
-                        ].get(
-                            "occupancy",
-                            0,
-                        )
-                    ),
-                )
-                for zone_id, _
-                in usable
+                risk_map[zone_id]["occupancy"]
+                for zone_id, _ in usable
             )
-
-            # -------------------------------------------------
-            # WEIGHTED EXIT RISK
-            # -------------------------------------------------
-            #
-            # If occupancy exists, people are used as the
-            # weighting factor.
-            #
-            # If every zone currently reports zero occupancy,
-            # use an ordinary mean so the exit still receives
-            # a meaningful risk score.
 
             if total_people > 0:
 
                 weighted_score = (
                     sum(
                         route["risk_score"]
-                        * max(
-                            0,
-                            int(
-                                risk_map[
-                                    zone_id
-                                ].get(
-                                    "occupancy",
-                                    0,
-                                )
-                            ),
-                        )
-                        for zone_id, route
-                        in usable
+                        * risk_map[zone_id]["occupancy"]
+                        for zone_id, route in usable
                     )
                     / total_people
                 )
@@ -1341,50 +1200,29 @@ def calculate_all_routes(sensors, selected_zone=None):
                 weighted_score = (
                     sum(
                         route["risk_score"]
-                        for _, route
-                        in usable
+                        for _, route in usable
                     )
                     / len(usable)
                 )
 
-            # -------------------------------------------------
-            # BEST ROUTE TO THIS EXIT
-            # -------------------------------------------------
-
             best_zone, best_route = min(
                 usable,
-                key=lambda item:
-                item[1]["risk_score"],
+                key=lambda item: item[1]["risk_score"]
             )
-
-            # -------------------------------------------------
-            # EXIT STATUS
-            # -------------------------------------------------
 
             status = (
                 "AVAILABLE"
                 if any(
-                    route["status"]
-                    == "AVAILABLE"
-                    for _, route
-                    in usable
+                    route["status"] == "AVAILABLE"
+                    for _, route in usable
                 )
                 else "CAUTION"
             )
 
-            if status == "AVAILABLE":
-
-                reason = (
-                    "Exit has at least one currently "
-                    "available evacuation route."
-                )
-
-            else:
-
-                reason = (
-                    "Exit is reachable, but one or more "
-                    "routes contain elevated or unknown risk."
-                )
+            reason = (
+                "At least one monitored room has a route "
+                "to this exit. Check route-specific warnings."
+            )
 
             exits.append({
 
@@ -1392,12 +1230,11 @@ def calculate_all_routes(sensors, selected_zone=None):
 
                 "name": exit_config["name"],
 
+                "floor": exit_config["floor"],
+
                 "risk_score": round(
-                    min(
-                        100.0,
-                        weighted_score,
-                    ),
-                    2,
+                    min(100.0, weighted_score),
+                    2
                 ),
 
                 "status": status,
@@ -1412,12 +1249,8 @@ def calculate_all_routes(sensors, selected_zone=None):
 
                 "best_zone": best_zone,
 
-                "distance": best_route["distance"],
+                "distance": best_route["distance"]
             })
-
-        # -------------------------------------------------
-        # EXIT COMPLETELY BLOCKED
-        # -------------------------------------------------
 
         else:
 
@@ -1427,14 +1260,13 @@ def calculate_all_routes(sensors, selected_zone=None):
 
                 "name": exit_config["name"],
 
+                "floor": exit_config["floor"],
+
                 "risk_score": 100.0,
 
                 "status": "BLOCKED",
 
-                "reason": (
-                    "No safe physical route is currently "
-                    "available from the monitored zones."
-                ),
+                "reason": "No reachable route was found.",
 
                 "connected_zones": [],
 
@@ -1444,7 +1276,7 @@ def calculate_all_routes(sensors, selected_zone=None):
 
                 "best_zone": None,
 
-                "distance": None,
+                "distance": None
             })
 
     # =====================================================
@@ -1452,145 +1284,112 @@ def calculate_all_routes(sensors, selected_zone=None):
     # =====================================================
 
     available_exits = [
-        exit_data
-        for exit_data in exits
-        if exit_data["status"]
-        == "AVAILABLE"
+        exit_data for exit_data in exits
+        if exit_data["status"] == "AVAILABLE"
     ]
 
     caution_exits = [
-        exit_data
-        for exit_data in exits
-        if exit_data["status"]
-        == "CAUTION"
+        exit_data for exit_data in exits
+        if exit_data["status"] == "CAUTION"
     ]
 
-    # Always prefer a genuinely available exit.
-    candidates = (
-        available_exits
-        or caution_exits
-    )
+    candidates = available_exits or caution_exits
 
     recommended = (
         min(
             candidates,
-            key=lambda exit_data:
-            (
+            key=lambda exit_data: (
                 exit_data["risk_score"],
-                -len(
-                    exit_data[
-                        "connected_zones"
-                    ]
-                ),
-            ),
+                -len(exit_data["connected_zones"])
+            )
         )
         if candidates
         else None
     )
 
     # =====================================================
-    # ALTERNATIVE EXITS
+    # BUILDING-LEVEL ALTERNATIVE EXITS
     # =====================================================
 
+    # CHANGE 3:
+    # Keep only usable building-level exits.
     alternatives = sorted(
         [
             exit_data
             for exit_data in exits
             if (
-                exit_data["status"]
-                != "BLOCKED"
+                exit_data["status"] in ("AVAILABLE", "CAUTION")
                 and (
-                    not recommended
-                    or exit_data["exit"]
-                    != recommended["exit"]
+                    recommended is None
+                    or exit_data["exit"] != recommended["exit"]
                 )
             )
         ],
-        key=lambda exit_data:
-        exit_data["risk_score"],
+        key=lambda exit_data: exit_data["risk_score"]
     )
 
-
     # =====================================================
-    # FINAL BUILDING STATUS
+    # BUILDING ROUTE STATUS
     # =====================================================
 
     if available_exits:
-        route_status = "SAFE ROUTE"
+        route_status = "AVAILABLE ROUTE"
+
     elif caution_exits:
-        route_status = "CAUTION ROUTE"
+        route_status = "CAUTION - VERIFY ROUTE"
+
     else:
-        route_status = "NO SAFE EXIT"
+        route_status = "NO SAFE ROUTE AVAILABLE"
 
-    building_condition = (
-        "CRITICAL"
-        if any(
-            risk.get("risk_level") == "CRITICAL"
-            for risk in risk_map.values()
-        )
-        else "HIGH RISK"
-        if any(
-            risk.get("risk_level") == "HIGH"
-            for risk in risk_map.values()
-        )
-        else "NORMAL"
-    )
+    # =====================================================
+    # BUILDING CONDITION
+    # =====================================================
 
+    if any(
+        risk["risk_level"] == "CRITICAL"
+        for risk in risk_map.values()
+    ):
+        building_condition = "CRITICAL"
+
+    elif any(
+        risk["risk_level"] == "HIGH"
+        for risk in risk_map.values()
+    ):
+        building_condition = "HIGH RISK"
+
+    elif any(
+        risk["risk_level"] in ("MODERATE", "WARNING")
+        for risk in risk_map.values()
+    ):
+        building_condition = "MODERATE RISK"
+
+    else:
+        building_condition = "NORMAL"
 
     # =====================================================
     # ZONE STATISTICS
     # =====================================================
 
-    monitored_zones = [
-        sensor
-        for sensor in sensors
-        if str(
-            sensor.get(
-                "zone_id",
-                "",
-            )
-        ) in ROOMS
-    ]
+    monitored_zones = len(risk_map)
 
     critical_zones = sum(
-        1
-        for sensor in monitored_zones
-        if str(
-            sensor.get(
-                "risk_level",
-                "",
-            )
-        ).upper()
-        == "CRITICAL"
+        1 for risk in risk_map.values()
+        if risk["risk_level"] == "CRITICAL"
     )
 
     high_risk_zones = sum(
-        1
-        for sensor in monitored_zones
-        if str(
-            sensor.get(
-                "risk_level",
-                "",
-            )
-        ).upper()
-        == "HIGH"
+        1 for risk in risk_map.values()
+        if risk["risk_level"] == "HIGH"
     )
 
     moderate_risk_zones = sum(
-        1
-        for sensor in monitored_zones
-        if str(
-            sensor.get(
-                "risk_level",
-                "",
-            )
-        ).upper()
-        == "MODERATE"
+        1 for risk in risk_map.values()
+        if risk["risk_level"] in ("MODERATE", "WARNING")
     )
 
-    unknown_zones = (
-        len(ROOMS)
-        - len(risk_map)
+    unknown_zones = sum(
+        1 for risk in risk_map.values()
+        if risk["risk_level"] == "UNKNOWN"
     )
 
     # =====================================================
@@ -1598,15 +1397,7 @@ def calculate_all_routes(sensors, selected_zone=None):
     # =====================================================
 
     total_occupancy = sum(
-        max(
-            0,
-            int(
-                risk.get(
-                    "occupancy",
-                    0,
-                )
-            ),
-        )
+        risk["occupancy"]
         for risk in risk_map.values()
     )
 
@@ -1623,34 +1414,32 @@ def calculate_all_routes(sensors, selected_zone=None):
         "exits": exits,
 
         "recommended_exit": recommended,
+
         "selected_zone": selected_zone,
-"selected_zone_recommendation": (
-    selected_zone_data["recommended_exit"]
-    if selected_zone_data
-    else None
-),
-"selected_zone_routes": (
-    selected_zone_data["all_routes"]
-    if selected_zone_data
-    else []
-),
+
+        "selected_zone_recommendation": (
+            selected_zone_data["recommended_exit"]
+            if selected_zone_data
+            else None
+        ),
+
+        "selected_zone_routes": (
+            selected_zone_data["all_routes"]
+            if selected_zone_data
+            else []
+        ),
 
         "alternative_exits": alternatives,
 
         "route_status": route_status,
+
         "building_condition": building_condition,
 
-        "total_zones": len(
-            monitored_zones
-        ),
+        "total_zones": monitored_zones,
 
-        "building_zones": len(
-            ROOMS
-        ),
+        "building_zones": len(ROOMS),
 
-        "monitored_zones": len(
-            risk_map
-        ),
+        "monitored_zones": monitored_zones,
 
         "unknown_zones": unknown_zones,
 
@@ -1662,5 +1451,9 @@ def calculate_all_routes(sensors, selected_zone=None):
 
         "total_occupancy": total_occupancy,
 
-        "building_graph": BUILDING_GRAPH,
+        "infrastructure_sensor_coverage": (
+            INFRASTRUCTURE_SENSORS_AVAILABLE
+        ),
+
+        "building_graph": BUILDING_GRAPH
     }

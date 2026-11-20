@@ -1,0 +1,12 @@
+RISK MODEL CLASSIFICATION REPORT
+
+              precision    recall  f1-score   support
+
+    CRITICAL       0.94      0.77      0.85       168
+        HIGH       0.81      0.95      0.87       181
+         LOW       1.00      1.00      1.00      5721
+    MODERATE       0.96      0.99      0.97       587
+
+    accuracy                           0.99      6657
+   macro avg       0.93      0.93      0.92      6657
+weighted avg       0.99      0.99      0.99      6657

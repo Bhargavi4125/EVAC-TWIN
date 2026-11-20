@@ -1,0 +1,10 @@
+Metric,Value
+Accuracy (%),98.88
+Precision,0.9909
+Recall,0.9935
+Macro F1 Score,0.9863
+ROC AUC Score,0.9995
+Average Precision,0.9998
+Best Validation Loss,0.0271
+Epochs Completed,100.0
+Calibration Temperature,0.8121
