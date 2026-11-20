@@ -1,15 +1,21 @@
-# EVAC-TWIN
-## Emergency Intelligence Digital Twin
 
-EVAC-TWIN is a Digital Twin-based intelligent emergency response and evacuation system.
+# EVAC-TWIN
+
+## Digital Twin-Based Intelligent Emergency Response and Evacuation System
+
+### About
+
+EVAC-TWIN is an intelligent emergency response and evacuation management system that uses a Digital Twin environment to monitor building conditions, predict emergency risks, and identify safer evacuation routes.
 
 ### Key Features
+
 - Real-time virtual IoT sensor monitoring
 - Temperature, smoke, humidity and occupancy monitoring
-- Deep Learning-based emergency risk prediction
+- Deep Learning-based risk prediction
 - Dynamic risk-aware evacuation routing
+- Building topology and floor-wise evacuation planning
 - BFS, DFS, Dijkstra and A* algorithm comparison
-- Live dashboard and simulation
+- Emergency simulation and analytics dashboard
 
 ### Technology Stack
 
@@ -33,14 +39,23 @@ EVAC-TWIN is a Digital Twin-based intelligent emergency response and evacuation 
 
 ### Project Structure
 
-- backend/ - Backend APIs, routing and Deep Learning models
-- frontend/ - React dashboard
-- EVAC_TWIN_Execution_Flow.ipynb - Project execution flow notebook
+- `backend/` - Backend APIs, database connectivity, routing and Deep Learning models
+- `frontend/` - React dashboard and visualization
+- `EVAC_TWIN_Execution_Flow.ipynb` - Project execution flow notebook
+- `create_evactwin_flow_notebook.py` - Notebook generation script
 
-### Execution
+### Project Team
 
-Run the backend and frontend using their respective requirements and configuration files.
+- Bethireddy Bhargavi
+- Dokka Chinnari
+- Sanagapuri Kusuma Priya
+- Ganta Jaysai Vinaya Bharath
 
-### Project
+### Guide
+
+Mr. D Ayyappa, M.Tech  
+Assistant Professor
+
+### Project Title
 
 EVAC-TWIN - Emergency Intelligence Digital Twin
